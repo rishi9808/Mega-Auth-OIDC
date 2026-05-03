@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createApp } from "./app.js";
 import { connectDB } from "./db/connect.js";
+import "./db/redis.js";
 
 async function start() {
   try {

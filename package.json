@@ -14,10 +14,13 @@
   "description": "",
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "connect-redis": "^9.0.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-session": "^1.19.0",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.6.1"
+    "mongoose": "^9.6.1",
+    "redis": "^5.12.1"
   },
   "devDependencies": {
     "@types/mongoose": "^5.11.96",
