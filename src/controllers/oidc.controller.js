@@ -1,4 +1,21 @@
+import { fileURLToPath } from "node:url";
+import crypto from "node:crypto";
 import redis from "../db/redis.js";
+import { Client } from "../models/client.model.js";
+import jwt from "jsonwebtoken";
+import fs from "node:fs";
+import path from "node:path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const PRIVATE_KEY = fs.readFileSync(
+  path.resolve(__dirname, "../../keys/private.pem"),
+  "utf-8",
+);
+
+const ISSUER = process.env.ISSUER || "http://localhost:3000";
+const KEY_ID = "test-key-id";
 
 export const authorize = async (req, res) => {
   // Implementation for authorize endpoint
@@ -59,4 +76,70 @@ export const authorize = async (req, res) => {
   console.log(`Redirecting to: ${redirectUrl}`);
 
   res.redirect(redirectUrl);
+};
+
+export const tokenGenerate = async (req, res) => {
+  //validate the req body
+  const { code, client_id, client_secret, redirect_uri } = req.body;
+
+  if (!code || !client_id || !client_secret || !redirect_uri) {
+    return res.status(400).json({ error: "Missing required parameters" });
+  }
+  try {
+    // check if client is valid
+    const client = await Client.findOne({
+      client_id,
+      clent_secret: client_secret,
+      redirect_uri,
+    });
+    if (!client) {
+      return res.status(401).json({ error: "Invalid client credentials" });
+    }
+
+    // check if code is valid
+    const authData = await redis.get(`auth_code:${code}`);
+    if (!authData) {
+      return res
+        .status(400)
+        .json({ error: "Invalid or expired authorization code" });
+    }
+
+    const { user_id, scope, nonce, expiresAt } = JSON.parse(authData);
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ error: "Expired authorization code" });
+    }
+
+    // generate access token and id token
+    const accessToken = jwt.sign({ user_id, scope }, process.env.JWT_SECRET, {
+      expiresIn: "1m",
+    });
+
+    const idToken = jwt.sign(
+      {
+        sub: user_id,
+        aud: client_id,
+        iss: ISSUER,
+        nonce,
+        iat: Math.floor(Date.now() / 1000),
+      },
+      PRIVATE_KEY,
+      { algorithm: "RS256", expiresIn: "5m", keyid: KEY_ID },
+    );
+
+    const refreshToken = jwt.sign({ user_id, scope }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    // return tokens
+    return res.json({
+      access_token: accessToken,
+      id_token: idToken,
+      refresh_token: refreshToken,
+      token_type: "Bearer",
+      expires_in: 3600,
+    });
+  } catch (error) {
+    console.error("Error in token generation:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 };
